@@ -163,3 +163,68 @@ func TestUninstall_RefusesForeignHook(t *testing.T) {
 		t.Fatal("expected error removing foreign hook")
 	}
 }
+
+// --- raijin integration ---
+
+// withFakeRaijin creates a fake raijin binary on PATH and returns a cleanup.
+func withFakeRaijin(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	raijinPath := filepath.Join(dir, "raijin")
+	if err := os.WriteFile(raijinPath, []byte("#!/bin/sh\nexit 0"), 0o755); err != nil {
+		t.Fatalf("write fake raijin: %v", err)
+	}
+	os.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Cleanup(func() { os.Setenv("PATH", os.Getenv("PATH")) })
+}
+
+func TestFailoverHint_NoRaijin(t *testing.T) {
+	// remove raijin from PATH by pointing PATH at an empty dir
+	os.Setenv("PATH", t.TempDir())
+	defer os.Setenv("PATH", os.Getenv("PATH"))
+
+	hint := failoverHint()
+	if hint != "" {
+		t.Errorf("expected empty hint when raijin not on PATH, got %q", hint)
+	}
+}
+
+func TestFailoverHint_NoWorkflows(t *testing.T) {
+	withFakeRaijin(t)
+	dir := t.TempDir()
+	oldDir, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(oldDir)
+
+	hint := failoverHint()
+	if hint != "" {
+		t.Errorf("expected empty hint when no workflows exist, got %q", hint)
+	}
+}
+
+func TestFailoverHint_WithWorkflow(t *testing.T) {
+	withFakeRaijin(t)
+	dir := t.TempDir()
+	oldDir, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	defer os.Chdir(oldDir)
+
+	if err := os.MkdirAll(".github/workflows", 0o755); err != nil {
+		t.Fatalf("mkdir workflows: %v", err)
+	}
+	if err := os.WriteFile(".github/workflows/ci.yml", []byte("name: ci"), 0o644); err != nil {
+		t.Fatalf("write workflow: %v", err)
+	}
+
+	hint := failoverHint()
+	if !strings.Contains(hint, "raijin run") {
+		t.Errorf("expected raijin run hint, got %q", hint)
+	}
+	if !strings.Contains(hint, "ci.yml") {
+		t.Errorf("expected ci.yml in hint, got %q", hint)
+	}
+}

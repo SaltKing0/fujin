@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/SaltKing0/fujin/internal/config"
-	"github.com/SaltKing0/ghhealth/health"
 	"github.com/SaltKing0/fujin/internal/hook"
 	"github.com/SaltKing0/fujin/internal/push"
-	"github.com/SaltKing0/ghhealth/statuspage"
 	"github.com/SaltKing0/fujin/internal/store"
+	"github.com/SaltKing0/ghhealth/health"
+	"github.com/SaltKing0/ghhealth/statuspage"
 )
 
 // overridden at build time via -ldflags "-X main.version=..."

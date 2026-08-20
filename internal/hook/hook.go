@@ -138,10 +138,26 @@ func PrePush(cfg *config.Config, decider push.Decider, runner push.Runner, remot
 		}
 		msg := fmt.Sprintf("🌬️ fujin: %s is down — pushed to FAILOVER remote %q instead\n%s",
 			target.Name, fo.Name, out)
-		return 1, msg
+		return 1, msg + failoverHint()
 	}
 
 	return 1, fmt.Sprintf("fujin: target remote %q is unhealthy and no failover remote is reachable", target.Name)
+}
+
+// failoverHint suggests running CI locally via raijin when GitHub Actions is
+// affected. Returns "" when raijin is not installed or no workflows exist.
+func failoverHint() string {
+	if _, err := exec.LookPath("raijin"); err != nil {
+		return ""
+	}
+	files, err := filepath.Glob(".github/workflows/*.yml")
+	if err != nil || len(files) == 0 {
+		files, err = filepath.Glob(".github/workflows/*.yaml")
+		if err != nil || len(files) == 0 {
+			return ""
+		}
+	}
+	return fmt.Sprintf("🌩️ Hinweis: CI läuft nicht auf GitHub — lokalen Run starten:\n   raijin run %s --report\n", files[0])
 }
 
 func findRemote(cfg *config.Config, name, url string) *config.Remote {
