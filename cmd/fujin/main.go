@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/SaltKing0/fujin/internal/config"
-	"github.com/SaltKing0/fujin/internal/health"
+	"github.com/SaltKing0/ghhealth/health"
 	"github.com/SaltKing0/fujin/internal/hook"
 	"github.com/SaltKing0/fujin/internal/push"
-	"github.com/SaltKing0/fujin/internal/statuspage"
+	"github.com/SaltKing0/ghhealth/statuspage"
 	"github.com/SaltKing0/fujin/internal/store"
 )
 
@@ -92,7 +92,16 @@ Flags:
 	defer st.Close()
 
 	client := statuspage.NewClient("")
-	checker := health.New(cfg.Health.Endpoints, 60*time.Second, st)
+	checker := health.New(cfg.Health.Endpoints, 60*time.Second)
+	// persist health samples via the shared engine's callback
+	checker.OnSample = func(s health.HealthSample) {
+		_ = st.SaveHealthSample(store.HealthSample{
+			Endpoint:   s.Endpoint,
+			StatusCode: s.StatusCode,
+			LatencyMs:  s.LatencyMs,
+			CheckedAt:  s.CheckedAt,
+		})
+	}
 	decider := &healthDecider{client: client, checker: checker}
 
 	args := flag.Args()
