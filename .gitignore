@@ -1,0 +1,11 @@
+/fujin
+/fujin.exe
+*.test
+*.out
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+dist/
+tmp/
