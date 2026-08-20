@@ -68,7 +68,7 @@ func TestRunAll_AllPass(t *testing.T) {
 	os.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	defer os.Setenv("PATH", os.Getenv("PATH"))
 
-	r := &fakeRunner{results: map[string]bool{"ci.yml": true}}
+	r := &fakeRunner{results: map[string]bool{filepath.Join(dir, ".github", "workflows", "ci.yml"): true}}
 	d := Dispatcher{Runner: r}
 	failed, err := d.RunAll(dir)
 	if err != nil {
