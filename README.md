@@ -92,6 +92,15 @@ go test ./... -count=1
 - [x] pre-push hook installer (`fujin install-hook`)
 - [ ] Auto mirror setup (create repo on Gitea via API)
 
+## The kami family
+
+| Project | God | Purpose |
+|---|---|---|
+| [kagutsuchi](https://github.com/SaltKing0/kagutsuchi) | 🔥 Fire | TUI reliability dashboard |
+| [fūjin](https://github.com/SaltKing0/fujin) | 🌬️ Wind | This project — multi-remote push failover |
+| [raijin](https://github.com/SaltKing0/raijin) | 🌩️ Thunder | Local CI failover via act |
+| [ghhealth](https://github.com/SaltKing0/ghhealth) | — | Shared health engine (statuspage + health checks) |
+
 ## License
 
 MIT
