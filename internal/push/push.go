@@ -39,11 +39,13 @@ func (execRunner) GitPush(url string, refspecs []string) (string, error) {
 type Result struct {
 	Remote   config.Remote
 	Failover bool
+	Queued   bool // true if the push was queued because all remotes were down
 	Output   string
 	Err      error
 }
 
-// P usher routes a push to the healthiest remote.
+// Pusher routes a push to the healthiest remote and maintains the offline
+// queue for pushes that cannot be delivered while everything is down.
 type Pusher struct {
 	Cfg     *config.Config
 	Store   *store.Store
@@ -64,7 +66,7 @@ func New(cfg *config.Config, st *store.Store, decider Decider) *Pusher {
 }
 
 // Push pushes refspecs to the primary if healthy, else the first healthy
-// failover. Returns the result and records it in the store.
+// failover, else queues them for later. Returns the result and records it.
 func (p *Pusher) Push(refspecs []string) Result {
 	// primary first
 	if p.Decider.Healthy(p.Cfg.Primary) {
@@ -78,13 +80,65 @@ func (p *Pusher) Push(refspecs []string) Result {
 		}
 	}
 
-	// everything down
+	// everything down — queue the push for later
 	res := Result{
 		Remote: p.Cfg.Primary,
-		Err:    fmt.Errorf("all remotes unhealthy — GitHub and %d failover(s) unreachable", len(p.Cfg.Failover)),
+		Queued: true,
+		Err:    fmt.Errorf("all remotes unhealthy — push queued (%d refspecs pending)", len(refspecs)),
+	}
+	if p.Store != nil {
+		for _, ref := range refspecs {
+			_ = p.Store.EnqueuePush(ref)
+		}
 	}
 	p.record(res, refspecs)
 	return res
+}
+
+// FlushPending replays all queued pushes, oldest first, while any remote is
+// healthy. Failed attempts stay in the queue. Returns the number of pushes
+// delivered.
+func (p *Pusher) FlushPending() (int, error) {
+	if p.Store == nil {
+		return 0, nil
+	}
+	pending, err := p.Store.PendingPushes()
+	if err != nil {
+		return 0, fmt.Errorf("flush: %w", err)
+	}
+	if len(pending) == 0 {
+		return 0, nil
+	}
+
+	// pick a healthy target: primary, else first healthy failover
+	var target *config.Remote
+	if p.Decider.Healthy(p.Cfg.Primary) {
+		t := p.Cfg.Primary
+		target = &t
+	} else {
+		for i := range p.Cfg.Failover {
+			if p.Decider.Healthy(p.Cfg.Failover[i]) {
+				target = &p.Cfg.Failover[i]
+				break
+			}
+		}
+	}
+	if target == nil {
+		return 0, fmt.Errorf("flush: no healthy remote — %d push(es) still queued", len(pending))
+	}
+
+	delivered := 0
+	for _, psh := range pending {
+		_, err := p.Runner.GitPush(target.URL, []string{psh.Refspec})
+		status := "ok"
+		if err != nil {
+			status = "failed"
+		} else {
+			delivered++
+		}
+		_ = p.Store.MarkPushResult(psh.ID, status)
+	}
+	return delivered, nil
 }
 
 func (p *Pusher) doPush(remote config.Remote, refspecs []string, failover bool) Result {

@@ -140,3 +140,96 @@ func TestPush_PushErrorRecorded(t *testing.T) {
 		t.Errorf("expected failed record, got %+v", records)
 	}
 }
+
+func TestPush_AllDown_Queues(t *testing.T) {
+	st := openStore(t)
+	runner := &fakeRunner{}
+	p := New(testCfg(), st, fakeDecider{healthy: map[string]bool{"github": false, "gitea": false}})
+	p.Runner = runner
+
+	res := p.Push([]string{"main", "dev"})
+	if res.Err == nil {
+		t.Fatal("expected error when all remotes down")
+	}
+	if !res.Queued {
+		t.Error("expected result marked as queued")
+	}
+
+	pending, err := st.PendingPushes()
+	if err != nil {
+		t.Fatalf("PendingPushes: %v", err)
+	}
+	if len(pending) != 2 {
+		t.Fatalf("expected 2 queued pushes, got %d", len(pending))
+	}
+	if pending[0].Refspec != "main" || pending[1].Refspec != "dev" {
+		t.Errorf("unexpected queue order: %+v", pending)
+	}
+}
+
+func TestFlushPending_DeliversWhenHealthy(t *testing.T) {
+	st := openStore(t)
+	_ = st.EnqueuePush("main")
+	_ = st.EnqueuePush("dev")
+
+	runner := &fakeRunner{}
+	p := New(testCfg(), st, fakeDecider{healthy: map[string]bool{"github": true, "gitea": false}})
+	p.Runner = runner
+
+	delivered, err := p.FlushPending()
+	if err != nil {
+		t.Fatalf("FlushPending: %v", err)
+	}
+	if delivered != 2 {
+		t.Errorf("expected 2 delivered, got %d", delivered)
+	}
+	if len(runner.calls) != 2 {
+		t.Errorf("expected 2 git pushes, got %d", len(runner.calls))
+	}
+	// queue should be empty now
+	pending, _ := st.PendingPushes()
+	if len(pending) != 0 {
+		t.Errorf("expected empty queue after flush, got %d", len(pending))
+	}
+}
+
+func TestFlushPending_NoHealthyRemote(t *testing.T) {
+	st := openStore(t)
+	_ = st.EnqueuePush("main")
+
+	p := New(testCfg(), st, fakeDecider{healthy: map[string]bool{"github": false, "gitea": false}})
+	delivered, err := p.FlushPending()
+	if err == nil {
+		t.Fatal("expected error when no remote healthy")
+	}
+	if delivered != 0 {
+		t.Errorf("expected 0 delivered, got %d", delivered)
+	}
+	// push stays queued
+	pending, _ := st.PendingPushes()
+	if len(pending) != 1 {
+		t.Errorf("expected push still queued, got %d", len(pending))
+	}
+}
+
+func TestFlushPending_FailedPushStaysQueued(t *testing.T) {
+	st := openStore(t)
+	_ = st.EnqueuePush("main")
+
+	runner := &fakeRunner{failURLs: map[string]bool{"git@github.com:u/r.git": true}}
+	p := New(testCfg(), st, fakeDecider{healthy: map[string]bool{"github": true, "gitea": false}})
+	p.Runner = runner
+
+	delivered, err := p.FlushPending()
+	if err != nil {
+		t.Fatalf("FlushPending: %v", err)
+	}
+	if delivered != 0 {
+		t.Errorf("expected 0 delivered on push failure, got %d", delivered)
+	}
+	// failed push stays in queue for a later retry
+	pending, _ := st.PendingPushes()
+	if len(pending) != 1 {
+		t.Errorf("expected push still queued after failure, got %d", len(pending))
+	}
+}

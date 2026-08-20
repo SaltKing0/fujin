@@ -55,6 +55,13 @@ func (s *Store) migrate() error {
 			shortlink   TEXT
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_incidents_created ON incidents(created_at)`,
+		`CREATE TABLE IF NOT EXISTS pending_pushes (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			refspec    TEXT NOT NULL,
+			status     TEXT NOT NULL DEFAULT 'pending',
+			created_at DATETIME NOT NULL,
+			pushed_at  DATETIME
+		)`,
 		`CREATE TABLE IF NOT EXISTS push_history (
 			id        INTEGER PRIMARY KEY AUTOINCREMENT,
 			remote    TEXT NOT NULL,

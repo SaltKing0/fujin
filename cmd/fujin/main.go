@@ -54,7 +54,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, `fujin %s — wind god of Git pushes
 
 Usage:
-  fujin push [refspec...]   push with automatic failover
+  fujin push [refspec...]   push with automatic failover (flushes queue first)
+  fujin flush               replay queued pushes (when a remote is healthy again)
   fujin status              show health of all remotes
   fujin log                 show push history
   fujin --version           print version
@@ -105,9 +106,21 @@ Flags:
 			refspecs = []string{"HEAD"}
 		}
 		p := push.New(cfg, st, decider)
+
+		// flush any queued pushes first, while we're here
+		if delivered, err := p.FlushPending(); err != nil {
+			fmt.Fprintf(os.Stderr, "fujin: flush: %v\n", err)
+		} else if delivered > 0 {
+			fmt.Printf("🌬️ fujin: flushed %d queued push(es)\n", delivered)
+		}
+
 		res := p.Push(refspecs)
 		if res.Output != "" {
 			fmt.Print(res.Output)
+		}
+		if res.Queued {
+			fmt.Printf("🌬️ fujin: all remotes unhealthy — push QUEUED, will retry on next push/flush\n")
+			os.Exit(1)
 		}
 		if res.Failover {
 			fmt.Printf("🌬️ fujin: pushed to FAILOVER remote %q (GitHub is having issues)\n", res.Remote.Name)
@@ -117,6 +130,23 @@ Flags:
 		if res.Err != nil {
 			fmt.Fprintf(os.Stderr, "fujin: push failed: %v\n", res.Err)
 			os.Exit(1)
+		}
+
+	case "flush":
+		p := push.New(cfg, st, decider)
+		delivered, err := p.FlushPending()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fujin: %v\n", err)
+			os.Exit(1)
+		}
+		if delivered == 0 {
+			if pending, _ := st.PendingPushes(); len(pending) > 0 {
+				fmt.Printf("🌬️ fujin: no healthy remote — %d push(es) still queued\n", len(pending))
+				os.Exit(1)
+			}
+			fmt.Println("🌬️ fujin: queue is empty")
+		} else {
+			fmt.Printf("🌬️ fujin: flushed %d queued push(es)\n", delivered)
 		}
 
 	case "status":
