@@ -20,6 +20,8 @@ fujin push [refspec...]   # push with automatic failover (flushes queue first)
 fujin flush               # replay queued pushes (when a remote is healthy again)
 fujin status              # health of all remotes
 fujin log                 # push history (last 20)
+fujin install-hook        # install a pre-push hook: every 'git push' uses failover
+fujin uninstall-hook      # remove the hook again
 ```
 
 ```text
@@ -70,6 +72,12 @@ refspecs in SQLite instead of failing. `fujin flush` (or the next
 `fujin push`) replays the queue oldest-first as soon as any remote is healthy
 again. Failed replay attempts stay queued for the next retry.
 
+**pre-push hook:** `fujin install-hook` writes `.git/hooks/pre-push` so every
+plain `git push` routes through the failover logic — when the target remote is
+down, fujin pushes your refs to the first healthy failover itself and blocks
+the original push with a clear message. fujin's own pushes set
+`FUJIN_INTERNAL=1` so the hook never intercepts them.
+
 ## Development
 
 ```bash
@@ -81,8 +89,8 @@ go test ./... -count=1
 
 - [x] Health-based push routing · status · push log
 - [x] Offline queue (replay when a remote recovers)
+- [x] pre-push hook installer (`fujin install-hook`)
 - [ ] Auto mirror setup (create repo on Gitea via API)
-- [ ] pre-push hook installer (`fujin install-hook`)
 
 ## License
 

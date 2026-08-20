@@ -31,6 +31,8 @@ func (execRunner) GitPush(url string, refspecs []string) (string, error) {
 	args := append([]string{"push", url}, refspecs...)
 	cmd := exec.Command("git", args...)
 	cmd.Stdin = os.Stdin
+	// tell the pre-push hook this push is fujin's own — don't intercept
+	cmd.Env = append(os.Environ(), "FUJIN_INTERNAL=1")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

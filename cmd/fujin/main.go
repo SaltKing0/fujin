@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/SaltKing0/fujin/internal/config"
 	"github.com/SaltKing0/fujin/internal/health"
+	"github.com/SaltKing0/fujin/internal/hook"
 	"github.com/SaltKing0/fujin/internal/push"
 	"github.com/SaltKing0/fujin/internal/statuspage"
 	"github.com/SaltKing0/fujin/internal/store"
@@ -148,6 +150,46 @@ Flags:
 		} else {
 			fmt.Printf("🌬️ fujin: flushed %d queued push(es)\n", delivered)
 		}
+
+	case "install-hook":
+		path, err := hook.Install(".")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fujin: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("🌬️ fujin: pre-push hook installed at %s\n", path)
+		fmt.Println("   every 'git push' now routes through fujin's failover logic")
+
+	case "uninstall-hook":
+		if err := hook.Uninstall("."); err != nil {
+			fmt.Fprintf(os.Stderr, "fujin: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("🌬️ fujin: pre-push hook removed")
+
+	case "hook":
+		if len(args) < 2 || args[1] != "pre-push" {
+			fmt.Fprintln(os.Stderr, "fujin: usage: fujin hook pre-push <remote-name> <remote-url>")
+			os.Exit(2)
+		}
+		remoteName := ""
+		remoteURL := ""
+		if len(args) >= 3 {
+			remoteName = args[2]
+		}
+		if len(args) >= 4 {
+			remoteURL = args[3]
+		}
+		refs, err := hook.ParseRefs(bufio.NewReader(os.Stdin))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fujin: parse refs: %v\n", err)
+			os.Exit(1)
+		}
+		code, msg := hook.PrePush(cfg, decider, hook.RunnerFunc(hook.GitPushWithEnv), remoteName, remoteURL, refs)
+		if msg != "" {
+			fmt.Fprintln(os.Stdout, msg)
+		}
+		os.Exit(code)
 
 	case "status":
 		for _, r := range cfg.AllRemotes() {
