@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/SaltKing0/fujin/internal/ci"
 	"github.com/SaltKing0/fujin/internal/config"
 	"github.com/SaltKing0/fujin/internal/hook"
 	"github.com/SaltKing0/fujin/internal/push"
@@ -159,6 +160,20 @@ Flags:
 		} else {
 			fmt.Printf("🌬️ fujin: flushed %d queued push(es)\n", delivered)
 		}
+
+	case "ci":
+		report := true // always report results back to GitHub
+		d := ci.Dispatcher{Runner: ci.RaijinRunner{}, Report: report}
+		failed, err := d.RunAll(".")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "🌬️ fujin: %v\n", err)
+			os.Exit(1)
+		}
+		if msg := ci.FormatFailed(failed); msg != "" {
+			fmt.Fprintf(os.Stderr, "🌬️ fujin: %s\n", msg)
+			os.Exit(1)
+		}
+		fmt.Println("🌬️ fujin: all workflows passed locally (raijin)")
 
 	case "install-hook":
 		path, err := hook.Install(".")

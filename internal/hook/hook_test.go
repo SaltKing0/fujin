@@ -221,10 +221,7 @@ func TestFailoverHint_WithWorkflow(t *testing.T) {
 	}
 
 	hint := failoverHint()
-	if !strings.Contains(hint, "raijin run") {
-		t.Errorf("expected raijin run hint, got %q", hint)
-	}
-	if !strings.Contains(hint, "ci.yml") {
-		t.Errorf("expected ci.yml in hint, got %q", hint)
+	if !strings.Contains(hint, "fujin ci") {
+		t.Errorf("expected 'fujin ci' hint, got %q", hint)
 	}
 }
