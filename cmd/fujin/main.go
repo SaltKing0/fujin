@@ -128,7 +128,7 @@ Flags:
 	}
 	defer st.Close()
 
-	client := statuspage.NewClient("")
+	client := statuspage.NewClient(os.Getenv("FUJIN_STATUSDATA_URL"))
 	client.CacheTTL = 30 * time.Second
 	checker := health.New(cfg.Health.Endpoints, 60*time.Second)
 	// persist health samples via the shared engine's callback
