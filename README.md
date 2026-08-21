@@ -18,8 +18,10 @@ go install github.com/SaltKing0/fujin@latest
 ```bash
 fujin push [refspec...]   # push with automatic failover (flushes queue first)
 fujin flush               # replay queued pushes (when a remote is healthy again)
-fujin status              # health of all remotes
+fujin status              # health of all remotes (add --json for scripting)
+fujin queue               # show queued pushes
 fujin log                 # push history (last 20)
+fujin init                # interactive first-run setup (detects git origin)
 fujin install-hook        # install a pre-push hook: every 'git push' uses failover
 fujin uninstall-hook      # remove the hook again
 ```

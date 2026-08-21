@@ -22,7 +22,8 @@ exec %s hook pre-push "$@"
 `
 
 // Install writes the pre-push hook into the current repository
-// (.git/hooks/pre-push) using the absolute path of the running fujin binary.
+// (hooks dir, honoring git worktrees and core.hooksPath) using the absolute
+// path of the running fujin binary.
 func Install(repoRoot string) (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
@@ -33,7 +34,10 @@ func Install(repoRoot string) (string, error) {
 		return "", fmt.Errorf("hook: absolute path: %w", err)
 	}
 
-	hooksDir := filepath.Join(repoRoot, ".git", "hooks")
+	hooksDir, err := resolveHooksDir(repoRoot)
+	if err != nil {
+		return "", err
+	}
 	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
 		return "", fmt.Errorf("hook: create hooks dir: %w", err)
 	}
@@ -45,9 +49,30 @@ func Install(repoRoot string) (string, error) {
 	return path, nil
 }
 
+// resolveHooksDir returns the repository's hooks directory. It asks git so
+// that worktrees (`.git/worktrees/<name>/hooks`) and `core.hooksPath` are
+// honored; falls back to `.git/hooks` when git can't answer (non-repo dirs
+// in tests, bare-ish layouts).
+func resolveHooksDir(repoRoot string) (string, error) {
+	if out, err := exec.Command("git", "-C", repoRoot, "rev-parse", "--git-path", "hooks").Output(); err == nil {
+		p := strings.TrimSpace(string(out))
+		if p != "" {
+			if !filepath.IsAbs(p) {
+				p = filepath.Join(repoRoot, p)
+			}
+			return p, nil
+		}
+	}
+	return filepath.Join(repoRoot, ".git", "hooks"), nil
+}
+
 // Uninstall removes the pre-push hook if it was installed by fujin.
 func Uninstall(repoRoot string) error {
-	path := filepath.Join(repoRoot, ".git", "hooks", "pre-push")
+	hooksDir, err := resolveHooksDir(repoRoot)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(hooksDir, "pre-push")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -114,13 +139,8 @@ func PrePush(cfg *config.Config, decider push.Decider, runner push.Runner, remot
 	}
 
 	// target is down — try to push the refs to the first healthy failover
-	var localRefs []string
-	for _, r := range refs {
-		if r.LocalRef != "" {
-			localRefs = append(localRefs, r.LocalRef)
-		}
-	}
-	if len(localRefs) == 0 {
+	refspecs := refspecsFor(refs)
+	if len(refspecs) == 0 {
 		return 1, "fujin: target remote is unhealthy and no local refs to fail over"
 	}
 
@@ -132,7 +152,7 @@ func PrePush(cfg *config.Config, decider push.Decider, runner push.Runner, remot
 		if !decider.Healthy(fo) {
 			continue
 		}
-		out, err := runner.GitPush("", fo.URL, localRefs)
+		out, err := runner.GitPush("", fo.URL, refspecs)
 		if err != nil {
 			return 1, fmt.Sprintf("fujin: failover push to %q failed: %v\n%s", fo.Name, err, out)
 		}
@@ -142,6 +162,25 @@ func PrePush(cfg *config.Config, decider push.Decider, runner push.Runner, remot
 	}
 
 	return 1, fmt.Sprintf("fujin: target remote %q is unhealthy and no failover remote is reachable", target.Name)
+}
+
+// refspecsFor converts pre-push hook refs into git refspecs, preserving
+// local:remote mappings and translating deletes to ":<remote-ref>".
+func refspecsFor(refs []Ref) []string {
+	var out []string
+	for _, r := range refs {
+		switch {
+		case r.LocalRef != "" && r.RemoteRef != "" && r.LocalRef != r.RemoteRef:
+			// local:remote mapping (e.g. feature -> main)
+			out = append(out, r.LocalRef+":"+r.RemoteRef)
+		case r.LocalRef != "":
+			out = append(out, r.LocalRef)
+		case r.RemoteRef != "":
+			// delete: push nothing locally, delete the remote ref
+			out = append(out, ":"+r.RemoteRef)
+		}
+	}
+	return out
 }
 
 // failoverHint suggests running CI locally via raijin when GitHub Actions is

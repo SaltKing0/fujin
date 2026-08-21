@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"github.com/SaltKing0/fujin/internal/config"
 	"github.com/SaltKing0/fujin/internal/hook"
 	"github.com/SaltKing0/fujin/internal/push"
+	"github.com/SaltKing0/fujin/internal/setup"
 	"github.com/SaltKing0/fujin/internal/store"
 	"github.com/SaltKing0/ghhealth/health"
 	"github.com/SaltKing0/ghhealth/statuspage"
@@ -58,7 +60,10 @@ Usage:
   fujin push [refspec...]   push with automatic failover (flushes queue first)
   fujin flush               replay queued pushes (when a remote is healthy again)
   fujin status              show health of all remotes
+  fujin queue               show queued pushes
   fujin log                 show push history
+  fujin init                interactive first-run setup
+  fujin install-hook        install a pre-push hook
   fujin --version           print version
 
 Flags:
@@ -74,6 +79,15 @@ Flags:
 
 	if *showVer {
 		fmt.Printf("fujin %s\n", version)
+		return
+	}
+
+	// init runs before config.Load — it creates the config file
+	if args := flag.Args(); len(args) > 0 && args[0] == "init" {
+		if _, err := setup.Init(os.Stdin, os.Stdout, *configPath); err != nil {
+			fmt.Fprintf(os.Stderr, "fujin: init: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -215,7 +229,40 @@ Flags:
 		os.Exit(code)
 
 	case "status":
-		for _, r := range cfg.AllRemotes() {
+		jsonMode := false
+		for _, a := range args[1:] {
+			if a == "--json" {
+				jsonMode = true
+				break
+			}
+		}
+		remotes := cfg.AllRemotes()
+		if jsonMode {
+			type remoteStatus struct {
+				Name    string `json:"name"`
+				URL     string `json:"url"`
+				Healthy bool   `json:"healthy"`
+				Role    string `json:"role"`
+			}
+			var out []remoteStatus
+			for _, r := range remotes {
+				role := "failover"
+				if r.Name == cfg.Primary.Name {
+					role = "primary"
+				}
+				out = append(out, remoteStatus{
+					Name:    r.Name,
+					URL:     r.URL,
+					Healthy: decider.Healthy(r),
+					Role:    role,
+				})
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(out)
+			return
+		}
+		for _, r := range remotes {
 			ok := decider.Healthy(r)
 			mark := "✓"
 			if !ok {
@@ -246,6 +293,26 @@ Flags:
 			}
 			fmt.Printf("%-20s %-10s %-9s %s%s\n",
 				r.PushedAt.Format("2006-01-02 15:04"), r.Remote+fo, r.Status, r.Refspec, "")
+		}
+
+	case "queue":
+		pending, err := st.PendingPushes()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "queue: %v\n", err)
+			os.Exit(1)
+		}
+		if len(pending) == 0 {
+			fmt.Println("queue is empty")
+			return
+		}
+		fmt.Printf("%-20s %-9s %-40s %s\n", "QUEUED AT", "STATUS", "REFSPEC", "REPO")
+		for _, p := range pending {
+			repo := p.RepoPath
+			if repo == "" {
+				repo = "(current dir)"
+			}
+			fmt.Printf("%-20s %-9s %-40s %s\n",
+				p.CreatedAt.Format("2006-01-02 15:04"), p.Status, p.Refspec, repo)
 		}
 
 	default:

@@ -49,6 +49,27 @@ func DefaultPath() string {
 	return filepath.Join(home, ".config", "fujin", "config.yaml")
 }
 
+// Save writes the config as YAML to path, creating parent directories.
+// Used by `fujin init` to write the generated configuration.
+func Save(path string, cfg *Config) error {
+	if path == "" {
+		path = DefaultPath()
+	}
+	if dir := filepath.Dir(path); dir != "." && dir != "" {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return fmt.Errorf("config: create dir: %w", err)
+		}
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("config: marshal: %w", err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("config: write %s: %w", path, err)
+	}
+	return nil
+}
+
 // Load reads the config file (if present) and applies FUJIN_* env overrides.
 func Load(path string) (*Config, error) {
 	cfg := Default()

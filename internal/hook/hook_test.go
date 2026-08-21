@@ -101,6 +101,42 @@ func TestPrePush_PrimaryDown_FailsOver(t *testing.T) {
 	}
 }
 
+func TestRefspecsFor_MappingAndDelete(t *testing.T) {
+	refs := []Ref{
+		{LocalRef: "refs/heads/main", RemoteRef: "refs/heads/main"},
+		{LocalRef: "refs/heads/feature", RemoteRef: "refs/heads/main"}, // mapping
+		{LocalRef: "", RemoteRef: "refs/heads/old"},                    // delete
+	}
+	got := refspecsFor(refs)
+	want := []string{"refs/heads/main", "refs/heads/feature:refs/heads/main", ":refs/heads/old"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %d refspecs, got %d: %v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("refspec %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestRefspecsFor_Empty(t *testing.T) {
+	if got := refspecsFor(nil); len(got) != 0 {
+		t.Errorf("expected no refspecs, got %v", got)
+	}
+}
+
+func TestPrePush_PrimaryDown_FailsOverWithMapping(t *testing.T) {
+	cfg := testCfg()
+	runner := &fakeRunner{}
+	code, msg := PrePush(cfg, fakeDecider{healthy: map[string]bool{"github": false, "gitea": true}}, runner, "origin", "git@github.com:u/r.git", []Ref{{LocalRef: "refs/heads/feature", RemoteRef: "refs/heads/main"}})
+	if code != 1 {
+		t.Errorf("expected exit 1, got %d", code)
+	}
+	if !strings.Contains(msg, "FAILOVER") {
+		t.Errorf("expected FAILOVER message, got: %s", msg)
+	}
+}
+
 func TestPrePush_AllDown_Blocks(t *testing.T) {
 	cfg := testCfg()
 	runner := &fakeRunner{}
