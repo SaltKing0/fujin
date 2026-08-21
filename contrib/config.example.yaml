@@ -1,0 +1,16 @@
+# fujin configuration — ~/.config/fujin/config.yaml
+# Environment variables override: FUJIN_PRIMARY_URL, FUJIN_DB_PATH
+
+primary:
+  name: github
+  url: git@github.com:your-org/your-repo.git
+
+failover:
+  - name: gitea
+    url: git@gitea.example.com:your-org/your-repo.git
+
+health:
+  statuspage: true
+  endpoints:
+    - https://github.com
+    - https://api.github.com
