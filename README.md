@@ -1,5 +1,7 @@
 # 🌬️ fujin
 
+[![Go](https://github.com/SaltKing0/fujin/actions/workflows/go.yml/badge.svg)](https://github.com/SaltKing0/fujin/actions/workflows/go.yml)
+
 **Wind god of Git pushes** — a thin CLI that wraps `git push` with automatic
 multi-remote failover. When GitHub is down, `fujin push` pushes to your
 failover forge (Gitea / Forgejo / GitLab) instead of failing.

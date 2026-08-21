@@ -21,7 +21,7 @@ import (
 )
 
 // overridden at build time via -ldflags "-X main.version=..."
-var version = "0.1.0"
+var version = "dev"
 
 // healthDecider combines the statuspage indicator with own HTTP checks.
 type healthDecider struct {
@@ -52,6 +52,40 @@ func (h *healthDecider) Healthy(remote config.Remote) bool {
 		}
 	}
 	return allOK
+}
+
+// HealthDetail reports why a remote is (un)healthy. The primary (github)
+// additionally requires the statuspage indicator to be "none" or "minor".
+// Used by `fujin status` to explain the ✓/✗ instead of just showing it.
+func (h *healthDecider) HealthDetail(remote config.Remote) (bool, string) {
+	results := h.checker.CheckAll()
+	healthOK := true
+	var healthReasons []string
+	for _, r := range results {
+		switch {
+		case r.Err != nil:
+			healthOK = false
+			healthReasons = append(healthReasons, r.Endpoint+" unreachable")
+		case r.StatusCode >= 500:
+			healthOK = false
+			healthReasons = append(healthReasons, fmt.Sprintf("%s HTTP %d", r.Endpoint, r.StatusCode))
+		}
+	}
+
+	if remote.Name == "github" {
+		st, err := h.client.GetStatus()
+		switch {
+		case err != nil:
+			return false, "statuspage unreachable"
+		case st.Indicator == statuspage.StatusCritical || st.Indicator == statuspage.StatusMajor:
+			return false, fmt.Sprintf("GitHub statuspage: %s (%s)", st.Indicator, st.Description)
+		}
+	}
+
+	if !healthOK {
+		return false, "own checks failing: " + strings.Join(healthReasons, ", ")
+	}
+	return true, "healthy"
 }
 
 // notifyTelegram sends a Telegram alert when credentials are configured.
@@ -293,7 +327,7 @@ Flags:
 			return
 		}
 		for _, r := range remotes {
-			ok := decider.Healthy(r)
+			ok, detail := decider.HealthDetail(r)
 			mark := "✓"
 			if !ok {
 				mark = "✗"
@@ -302,7 +336,7 @@ Flags:
 			if r.Name != cfg.Primary.Name {
 				label = "failover"
 			}
-			fmt.Printf("%s %s %-8s %s\n", mark, label, r.Name, r.URL)
+			fmt.Printf("%s %s %-8s %s  (%s)\n", mark, label, r.Name, r.URL, detail)
 		}
 
 	case "log":

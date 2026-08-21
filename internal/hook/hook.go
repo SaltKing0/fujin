@@ -196,7 +196,7 @@ func failoverHint() string {
 			return ""
 		}
 	}
-	return fmt.Sprintf("🌩️ Hinweis: CI läuft nicht auf GitHub — lokalen Run starten:\n   fujin ci\n")
+	return fmt.Sprintf("🌩️ Hint: CI won't run on GitHub — run it locally instead:\n   fujin ci\n")
 }
 
 func findRemote(cfg *config.Config, name, url string) *config.Remote {
