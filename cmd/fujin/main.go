@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/SaltKing0/fujin/internal/ci"
@@ -15,6 +16,7 @@ import (
 	"github.com/SaltKing0/fujin/internal/setup"
 	"github.com/SaltKing0/fujin/internal/store"
 	"github.com/SaltKing0/ghhealth/health"
+	"github.com/SaltKing0/ghhealth/notify"
 	"github.com/SaltKing0/ghhealth/statuspage"
 )
 
@@ -50,6 +52,28 @@ func (h *healthDecider) Healthy(remote config.Remote) bool {
 		}
 	}
 	return allOK
+}
+
+// notifyTelegram sends a Telegram alert when credentials are configured.
+// Best-effort — errors are logged to stderr, never fatal.
+func notifyTelegram(cfg *config.Config, title, desc string) {
+	if cfg.TelegramBotToken == "" || cfg.TelegramChatID == "" {
+		return
+	}
+	opts := notify.Options{
+		TelegramBotToken: cfg.TelegramBotToken,
+		TelegramChatID:   cfg.TelegramChatID,
+		AppName:          "fujin",
+	}
+	for _, err := range notify.Send(notify.Event{
+		Title:       title,
+		Description: desc,
+		Severity:    notify.SeverityMajor,
+	}, opts) {
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "fujin: notify: %v\n", err)
+		}
+	}
 }
 
 func main() {
@@ -137,6 +161,8 @@ Flags:
 			fmt.Fprintf(os.Stderr, "fujin: flush: %v\n", err)
 		} else if delivered > 0 {
 			fmt.Printf("🌬️ fujin: flushed %d queued push(es)\n", delivered)
+			notifyTelegram(cfg, "Queued pushes delivered",
+				fmt.Sprintf("fujin flushed %d queued push(es) to a healthy remote.", delivered))
 		}
 
 		res := p.Push(refspecs)
@@ -145,6 +171,8 @@ Flags:
 		}
 		if res.Queued {
 			fmt.Printf("🌬️ fujin: all remotes unhealthy — push QUEUED, will retry on next push/flush\n")
+			notifyTelegram(cfg, "Push queued — GitHub is down",
+				fmt.Sprintf("fujin queued %s; it will be flushed automatically when a remote is healthy again.", strings.Join(refspecs, " ")))
 			os.Exit(1)
 		}
 		if res.Failover {
@@ -172,6 +200,8 @@ Flags:
 			fmt.Println("🌬️ fujin: queue is empty")
 		} else {
 			fmt.Printf("🌬️ fujin: flushed %d queued push(es)\n", delivered)
+			notifyTelegram(cfg, "Queued pushes delivered",
+				fmt.Sprintf("fujin flushed %d queued push(es) to a healthy remote.", delivered))
 		}
 
 	case "ci":

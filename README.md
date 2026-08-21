@@ -62,7 +62,13 @@ health:
     - https://api.github.com
 ```
 
-Environment overrides: `FUJIN_PRIMARY_URL`, `FUJIN_DB_PATH`.
+Environment overrides: `FUJIN_PRIMARY_URL`, `FUJIN_DB_PATH`,
+`FUJIN_TELEGRAM_BOT_TOKEN`, `FUJIN_TELEGRAM_CHAT_ID`.
+
+**Telegram alerts:** set `telegram_bot_token` + `telegram_chat_id` and fujin
+notifies you when a push gets queued ("Push queued — GitHub is down") and
+when queued pushes are flushed. Same bot credentials as kagutsuchi — one bot
+for the whole family.
 
 **How failover works:** the primary is considered down when the statuspage
 indicator is `major`/`critical` **or** both own HTTP checks fail. Push history
@@ -74,11 +80,24 @@ refspecs in SQLite instead of failing. `fujin flush` (or the next
 `fujin push`) replays the queue oldest-first as soon as any remote is healthy
 again. Failed replay attempts stay queued for the next retry.
 
-**pre-push hook:** `fujin install-hook` writes `.git/hooks/pre-push` so every
-plain `git push` routes through the failover logic — when the target remote is
-down, fujin pushes your refs to the first healthy failover itself and blocks
-the original push with a clear message. fujin's own pushes set
-`FUJIN_INTERNAL=1` so the hook never intercepts them.
+**pre-push hook:** `fujin install-hook` writes the hook into the repo's hooks
+dir (worktrees and `core.hooksPath` are honored) so every plain `git push`
+routes through the failover logic — when the target remote is down, fujin
+pushes your refs to the first healthy failover itself and blocks the original
+push with a clear message. Ref mappings (`local:remote`) and deletes are
+preserved. fujin's own pushes set `FUJIN_INTERNAL=1` so the hook never
+intercepts them.
+
+### Exit codes
+
+| Command | Code | Meaning |
+|---|---|---|
+| `fujin push` | 0 | pushed (primary or failover) |
+| `fujin push` | 1 | all remotes down — push queued |
+| `fujin push` | 1 | push failed (remote rejected) |
+| `fujin flush` | 0 | queue empty or flushed |
+| `fujin flush` | 1 | no healthy remote — still queued |
+| `fujin` (all) | 2 | usage error / unknown command |
 
 ## Development
 

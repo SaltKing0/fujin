@@ -26,6 +26,10 @@ type Config struct {
 	Failover []Remote     `yaml:"failover"`
 	Health   HealthConfig `yaml:"health"`
 	DBPath   string       `yaml:"db_path"`
+	// TelegramBotToken and TelegramChatID enable Telegram alerts for
+	// queued/flushed pushes (e.g. "your push is QUEUED — GitHub is down").
+	TelegramBotToken string `yaml:"telegram_bot_token"`
+	TelegramChatID   string `yaml:"telegram_chat_id"`
 }
 
 // Default returns the built-in defaults.
@@ -91,6 +95,12 @@ func Load(path string) (*Config, error) {
 	}
 	if v := os.Getenv("FUJIN_DB_PATH"); v != "" {
 		cfg.DBPath = v
+	}
+	if v := os.Getenv("FUJIN_TELEGRAM_BOT_TOKEN"); v != "" {
+		cfg.TelegramBotToken = v
+	}
+	if v := os.Getenv("FUJIN_TELEGRAM_CHAT_ID"); v != "" {
+		cfg.TelegramChatID = v
 	}
 
 	if cfg.Primary.URL == "" {

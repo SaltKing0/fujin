@@ -2,6 +2,8 @@ github.com/SaltKing0/ghhealth v0.1.0 h1:h6uxGzslHtFiDNqLVE8U6QwDrYPIHq4Z6IDcHlaH
 github.com/SaltKing0/ghhealth v0.1.0/go.mod h1:6Tk2P/8QRJDbf6WLP4mDqstSFsBZEMMoyHAW39H/Az4=
 github.com/SaltKing0/ghhealth v0.2.0 h1:MfDSCpyothXaWqd4FQvFStQi4Ji9rPq2pXAd/+N2ggQ=
 github.com/SaltKing0/ghhealth v0.2.0/go.mod h1:6Tk2P/8QRJDbf6WLP4mDqstSFsBZEMMoyHAW39H/Az4=
+github.com/SaltKing0/ghhealth v0.3.0 h1:nVLSPWGl5tnYWN2C46iXaej8PFm2BZW/FMvtLws041k=
+github.com/SaltKing0/ghhealth v0.3.0/go.mod h1:6Tk2P/8QRJDbf6WLP4mDqstSFsBZEMMoyHAW39H/Az4=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
 github.com/google/pprof v0.0.0-20260802141513-ef3492d7dac3 h1:LMLX+LgTNWpfvCBdFebv6EsYotImrt/Ppc5cXIriCSo=
