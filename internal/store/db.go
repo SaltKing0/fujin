@@ -60,7 +60,9 @@ func (s *Store) migrate() error {
 			refspec    TEXT NOT NULL,
 			status     TEXT NOT NULL DEFAULT 'pending',
 			created_at DATETIME NOT NULL,
-			pushed_at  DATETIME
+			pushed_at  DATETIME,
+			repo_path  TEXT NOT NULL DEFAULT '',
+			remote_url TEXT NOT NULL DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS push_history (
 			id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,6 +86,10 @@ func (s *Store) migrate() error {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return fmt.Errorf("store: migrate: %w", err)
 		}
+	}
+	// migrate existing pending_pushes tables (pre v0.2) to the new columns
+	for _, col := range []string{"ALTER TABLE pending_pushes ADD COLUMN repo_path TEXT NOT NULL DEFAULT ''", "ALTER TABLE pending_pushes ADD COLUMN remote_url TEXT NOT NULL DEFAULT ''"} {
+		s.db.Exec(col) // ignore "duplicate column" errors on existing DBs
 	}
 	return nil
 }

@@ -22,7 +22,7 @@ type fakeRunner struct {
 	urls []string
 }
 
-func (f *fakeRunner) GitPush(url string, refs []string) (string, error) {
+func (f *fakeRunner) GitPush(dir, url string, refs []string) (string, error) {
 	f.urls = append(f.urls, url)
 	return "ok", nil
 }

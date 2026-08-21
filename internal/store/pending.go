@@ -12,14 +12,21 @@ type PendingPush struct {
 	Status    string // "pending" | "ok" | "failed"
 	CreatedAt time.Time
 	PushedAt  *time.Time
+	// RepoPath is the absolute path of the repo this refspec belongs to.
+	// Flush runs the push in that repo so queued pushes never leak into a
+	// different checkout. Empty for entries created before v0.2.
+	RepoPath string
+	// RemoteURL is the remote the push was originally meant for.
+	RemoteURL string
 }
 
-// EnqueuePush adds a refspec to the offline queue.
-func (s *Store) EnqueuePush(refspec string) error {
+// EnqueuePush adds a refspec to the offline queue, remembering which repo
+// and remote it belongs to.
+func (s *Store) EnqueuePush(refspec, repoPath, remoteURL string) error {
 	_, err := s.db.Exec(`
-		INSERT INTO pending_pushes (refspec, status, created_at)
-		VALUES (?, 'pending', ?)`,
-		refspec, time.Now().UTC().Format(time.RFC3339))
+		INSERT INTO pending_pushes (refspec, status, created_at, repo_path, remote_url)
+		VALUES (?, 'pending', ?, ?, ?)`,
+		refspec, time.Now().UTC().Format(time.RFC3339), repoPath, remoteURL)
 	if err != nil {
 		return fmt.Errorf("store: enqueue push: %w", err)
 	}
@@ -30,7 +37,7 @@ func (s *Store) EnqueuePush(refspec string) error {
 // (pending or previously failed attempts — both are retried).
 func (s *Store) PendingPushes() ([]PendingPush, error) {
 	rows, err := s.db.Query(`
-		SELECT id, refspec, status, created_at, pushed_at
+		SELECT id, refspec, status, created_at, pushed_at, repo_path, remote_url
 		FROM pending_pushes
 		WHERE status IN ('pending', 'failed')
 		ORDER BY created_at ASC`)
@@ -44,7 +51,7 @@ func (s *Store) PendingPushes() ([]PendingPush, error) {
 		var p PendingPush
 		var createdRaw string
 		var pushedRaw *string
-		if err := rows.Scan(&p.ID, &p.Refspec, &p.Status, &createdRaw, &pushedRaw); err != nil {
+		if err := rows.Scan(&p.ID, &p.Refspec, &p.Status, &createdRaw, &pushedRaw, &p.RepoPath, &p.RemoteURL); err != nil {
 			return nil, fmt.Errorf("store: scan pending push: %w", err)
 		}
 		if t, err := time.Parse(time.RFC3339, createdRaw); err == nil {

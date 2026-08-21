@@ -21,15 +21,16 @@ type Decider interface {
 
 // Runner executes git commands. *execRunner is the production implementation.
 type Runner interface {
-	// GitPush runs `git push <url> <refspec...>` and returns combined output.
-	GitPush(url string, refspecs []string) (string, error)
+	// GitPush runs `git push <url> <refspec...>` in dir and returns combined output.
+	GitPush(dir, url string, refspecs []string) (string, error)
 }
 
 type execRunner struct{}
 
-func (execRunner) GitPush(url string, refspecs []string) (string, error) {
+func (execRunner) GitPush(dir, url string, refspecs []string) (string, error) {
 	args := append([]string{"push", url}, refspecs...)
 	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
 	cmd.Stdin = os.Stdin
 	// tell the pre-push hook this push is fujin's own — don't intercept
 	cmd.Env = append(os.Environ(), "FUJIN_INTERNAL=1")
@@ -54,16 +55,22 @@ type Pusher struct {
 	Decider Decider
 	Runner  Runner
 	Now     func() time.Time
+	// Dir is the repo directory for the current push. Detected from Getwd
+	// in New. When flushing queued pushes, each push runs in the repo where
+	// it was originally enqueued (stored as RepoPath).
+	Dir string
 }
 
 // New creates a Pusher with production defaults.
 func New(cfg *config.Config, st *store.Store, decider Decider) *Pusher {
+	dir, _ := os.Getwd()
 	return &Pusher{
 		Cfg:     cfg,
 		Store:   st,
 		Decider: decider,
 		Runner:  execRunner{},
 		Now:     time.Now,
+		Dir:     dir,
 	}
 }
 
@@ -72,17 +79,17 @@ func New(cfg *config.Config, st *store.Store, decider Decider) *Pusher {
 func (p *Pusher) Push(refspecs []string) Result {
 	// primary first
 	if p.Decider.Healthy(p.Cfg.Primary) {
-		return p.doPush(p.Cfg.Primary, refspecs, false)
+		return p.doPush(p.Dir, p.Cfg.Primary, refspecs, false)
 	}
 
 	// try failovers in order
 	for _, failover := range p.Cfg.Failover {
 		if p.Decider.Healthy(failover) {
-			return p.doPush(failover, refspecs, true)
+			return p.doPush(p.Dir, failover, refspecs, true)
 		}
 	}
 
-	// everything down — queue the push for later
+	// everything down — queue the push for later (with repo context)
 	res := Result{
 		Remote: p.Cfg.Primary,
 		Queued: true,
@@ -90,7 +97,7 @@ func (p *Pusher) Push(refspecs []string) Result {
 	}
 	if p.Store != nil {
 		for _, ref := range refspecs {
-			_ = p.Store.EnqueuePush(ref)
+			_ = p.Store.EnqueuePush(ref, p.Dir, p.Cfg.Primary.URL)
 		}
 	}
 	p.record(res, refspecs)
@@ -131,7 +138,13 @@ func (p *Pusher) FlushPending() (int, error) {
 
 	delivered := 0
 	for _, psh := range pending {
-		_, err := p.Runner.GitPush(target.URL, []string{psh.Refspec})
+		// push in the repo where this refspec was originally enqueued
+		// ("" = current dir, pre-migration queue entries)
+		dir := psh.RepoPath
+		if dir == "" {
+			dir = p.Dir
+		}
+		_, err := p.Runner.GitPush(dir, target.URL, []string{psh.Refspec})
 		status := "ok"
 		if err != nil {
 			status = "failed"
@@ -143,8 +156,8 @@ func (p *Pusher) FlushPending() (int, error) {
 	return delivered, nil
 }
 
-func (p *Pusher) doPush(remote config.Remote, refspecs []string, failover bool) Result {
-	out, err := p.Runner.GitPush(remote.URL, refspecs)
+func (p *Pusher) doPush(dir string, remote config.Remote, refspecs []string, failover bool) Result {
+	out, err := p.Runner.GitPush(dir, remote.URL, refspecs)
 	res := Result{
 		Remote:   remote,
 		Failover: failover,

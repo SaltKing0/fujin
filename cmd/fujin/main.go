@@ -27,6 +27,8 @@ type healthDecider struct {
 
 // Healthy reports whether the given remote is usable. The primary (github)
 // additionally requires the statuspage indicator to be "none" or "minor".
+// Health checks and the statuspage call are TTL-cached (ghhealth), so
+// checking N remotes in a row costs one HTTP round-trip, not N.
 func (h *healthDecider) Healthy(remote config.Remote) bool {
 	// own HTTP checks always run
 	results := h.checker.CheckAll()
@@ -37,7 +39,7 @@ func (h *healthDecider) Healthy(remote config.Remote) bool {
 		}
 	}
 
-	if remote.Name == "github" || remote.URL == h.checkerEndpointsPrimary() {
+	if remote.Name == "github" {
 		if st, err := h.client.GetStatus(); err == nil {
 			// critical/major => GitHub is having a real incident
 			if st.Indicator == statuspage.StatusCritical || st.Indicator == statuspage.StatusMajor {
@@ -46,10 +48,6 @@ func (h *healthDecider) Healthy(remote config.Remote) bool {
 		}
 	}
 	return allOK
-}
-
-func (h *healthDecider) checkerEndpointsPrimary() string {
-	return ""
 }
 
 func main() {
@@ -93,6 +91,7 @@ Flags:
 	defer st.Close()
 
 	client := statuspage.NewClient("")
+	client.CacheTTL = 30 * time.Second
 	checker := health.New(cfg.Health.Endpoints, 60*time.Second)
 	// persist health samples via the shared engine's callback
 	checker.OnSample = func(s health.HealthSample) {

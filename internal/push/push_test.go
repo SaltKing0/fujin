@@ -19,11 +19,13 @@ func (f fakeDecider) Healthy(r config.Remote) bool {
 
 type fakeRunner struct {
 	calls    []string // urls pushed
+	dirs     []string // dirs pushed from
 	failURLs map[string]bool
 }
 
-func (f *fakeRunner) GitPush(url string, refspecs []string) (string, error) {
+func (f *fakeRunner) GitPush(dir, url string, refspecs []string) (string, error) {
 	f.calls = append(f.calls, url)
+	f.dirs = append(f.dirs, dir)
 	if f.failURLs[url] {
 		return "remote error", errors.New("push rejected")
 	}
@@ -169,12 +171,13 @@ func TestPush_AllDown_Queues(t *testing.T) {
 
 func TestFlushPending_DeliversWhenHealthy(t *testing.T) {
 	st := openStore(t)
-	_ = st.EnqueuePush("main")
-	_ = st.EnqueuePush("dev")
+	_ = st.EnqueuePush("main", "/repo/a", "git@github.com:u/r.git")
+	_ = st.EnqueuePush("dev", "/repo/a", "git@github.com:u/r.git")
 
 	runner := &fakeRunner{}
 	p := New(testCfg(), st, fakeDecider{healthy: map[string]bool{"github": true, "gitea": false}})
 	p.Runner = runner
+	p.Dir = "/somewhere/else" // flush runs from a different cwd
 
 	delivered, err := p.FlushPending()
 	if err != nil {
@@ -186,6 +189,12 @@ func TestFlushPending_DeliversWhenHealthy(t *testing.T) {
 	if len(runner.calls) != 2 {
 		t.Errorf("expected 2 git pushes, got %d", len(runner.calls))
 	}
+	// pushes must run in the repo where they were enqueued, not the cwd
+	for _, d := range runner.dirs {
+		if d != "/repo/a" {
+			t.Errorf("expected flush dir /repo/a, got %q", d)
+		}
+	}
 	// queue should be empty now
 	pending, _ := st.PendingPushes()
 	if len(pending) != 0 {
@@ -195,7 +204,7 @@ func TestFlushPending_DeliversWhenHealthy(t *testing.T) {
 
 func TestFlushPending_NoHealthyRemote(t *testing.T) {
 	st := openStore(t)
-	_ = st.EnqueuePush("main")
+	_ = st.EnqueuePush("main", "/repo/a", "git@github.com:u/r.git")
 
 	p := New(testCfg(), st, fakeDecider{healthy: map[string]bool{"github": false, "gitea": false}})
 	delivered, err := p.FlushPending()
@@ -214,7 +223,7 @@ func TestFlushPending_NoHealthyRemote(t *testing.T) {
 
 func TestFlushPending_FailedPushStaysQueued(t *testing.T) {
 	st := openStore(t)
-	_ = st.EnqueuePush("main")
+	_ = st.EnqueuePush("main", "/repo/a", "git@github.com:u/r.git")
 
 	runner := &fakeRunner{failURLs: map[string]bool{"git@github.com:u/r.git": true}}
 	p := New(testCfg(), st, fakeDecider{healthy: map[string]bool{"github": true, "gitea": false}})

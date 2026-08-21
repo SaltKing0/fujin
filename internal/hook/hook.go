@@ -132,7 +132,7 @@ func PrePush(cfg *config.Config, decider push.Decider, runner push.Runner, remot
 		if !decider.Healthy(fo) {
 			continue
 		}
-		out, err := runner.GitPush(fo.URL, localRefs)
+		out, err := runner.GitPush("", fo.URL, localRefs)
 		if err != nil {
 			return 1, fmt.Sprintf("fujin: failover push to %q failed: %v\n%s", fo.Name, err, out)
 		}
@@ -175,9 +175,10 @@ func findRemote(cfg *config.Config, name, url string) *config.Remote {
 
 // GitPushWithEnv runs `git push <url> <refs...>` with FUJIN_INTERNAL=1 so the
 // pre-push hook does not intercept fujin's own pushes.
-func GitPushWithEnv(url string, refs []string) (string, error) {
+func GitPushWithEnv(dir, url string, refs []string) (string, error) {
 	args := append([]string{"push", url}, refs...)
 	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
 	cmd.Stdin = os.Stdin
 	cmd.Env = append(os.Environ(), "FUJIN_INTERNAL=1")
 	out, err := cmd.CombinedOutput()
@@ -185,8 +186,8 @@ func GitPushWithEnv(url string, refs []string) (string, error) {
 }
 
 // RunnerFunc adapts a plain function to the push.Runner interface.
-type RunnerFunc func(url string, refs []string) (string, error)
+type RunnerFunc func(dir, url string, refs []string) (string, error)
 
-func (f RunnerFunc) GitPush(url string, refs []string) (string, error) {
-	return f(url, refs)
+func (f RunnerFunc) GitPush(dir, url string, refs []string) (string, error) {
+	return f(dir, url, refs)
 }
